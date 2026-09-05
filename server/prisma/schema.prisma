@@ -1,0 +1,142 @@
+// Prisma schema — ออกแบบตาม ER Diagram ใน docs/DESIGN.md
+// 7 ตาราง: EquipmentGroup, Equipment, User(app_user), PmRecord,
+//          ActivityLog, PmCheckItem, PmCheckResult
+// (รายละเอียดความสัมพันธ์/cascade ดู docs/DESIGN.md §5)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+/// กลุ่มอุปกรณ์ + นโยบาย PM (รอบ และค่าใช้จ่ายต่อครั้ง)
+model EquipmentGroup {
+  groupCode         String      @id @map("group_code") @db.VarChar(20) // PRINTER / COMPUTER / NETWORK
+  groupName         String      @map("group_name") @db.NVarChar(100)
+  pmIntervalMonths  Int         @map("pm_interval_months") // รอบ PM (เดือน)
+  costPerPm         Decimal     @map("cost_per_pm") @db.Decimal(10, 2) // ค่าใช้จ่าย/ครั้ง (บาท)
+
+  equipments        Equipment[]
+  checkItems        PmCheckItem[]
+
+  @@map("equipment_group")
+}
+
+/// ข้อมูลอุปกรณ์คอมพิวเตอร์ — ใช้ serial_number (SN) เป็น Primary Key
+model Equipment {
+  serialNumber   String    @id @map("serial_number") @db.VarChar(60) // PK = SN
+  groupCode      String    @map("group_code") @db.VarChar(20)
+  type           String    @map("type") @db.VarChar(30)  // LASER / INKJET / DOTMATRIX / THERMAL / PC / SERVER / SWITCH
+  brand          String    @map("brand") @db.NVarChar(60)
+  model          String    @map("model") @db.NVarChar(60)
+  equipmentName  String    @map("equipment_name") @db.NVarChar(120) // ชื่อของอุปกรณ์
+  zoneCode       String    @map("zone_code") @db.VarChar(10)
+  status         String    @default("ACTIVE") @map("status") @db.VarChar(10) // ACTIVE / RETIRED / DELETED (soft delete — เก็บประวัติ PM)
+  commissionDate DateTime? @map("commission_date") @db.Date // วันเริ่มใช้งาน (ฐานคำนวณรอบ PM ครั้งแรก)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  group          EquipmentGroup @relation(fields: [groupCode], references: [groupCode])
+  pmRecords      PmRecord[]
+
+  @@index([groupCode])
+  @@index([zoneCode])
+  @@map("equipment")
+}
+
+/// ผู้ใช้ระบบ + สิทธิ์ (role) — ตาราง app_user (เลี่ยงคำสงวน "user" ของ SQL Server)
+model User {
+  id           Int        @id @default(autoincrement()) @map("user_id")
+  username     String     @unique @map("username") @db.VarChar(50)
+  passwordHash String     @map("password_hash") @db.VarChar(100) // bcrypt hash
+  displayName  String     @map("display_name") @db.NVarChar(100) // ชื่อที่แสดง เช่น "Staff A"
+  role         String     @map("role") @db.VarChar(20) // ADMIN | TECHNICIAN
+  status       String     @default("A") @map("status") @db.VarChar(1) // A=ทำงานอยู่ / X=ลาออก/พ้นสภาพ
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  pmRecords    PmRecord[] @relation("performedBy")
+  activityLogs ActivityLog[]
+
+  @@map("app_user")
+}
+
+/// บันทึกการใช้งานระบบ (audit log) — ใครทำ action อะไร เมื่อไร
+model ActivityLog {
+  id        Int      @id @default(autoincrement()) @map("log_id")
+  userId    Int?     @map("user_id") // null = เหตุการณ์ที่ยังไม่ระบุตัวตน (เช่น login ล้มเหลว)
+  username  String   @map("username") @db.VarChar(50) // snapshot ชื่อผู้ใช้ ณ เวลานั้น
+  role      String?  @map("role") @db.VarChar(20)
+  action    String   @map("action") @db.VarChar(40) // LOGIN / LOGOUT / EQUIPMENT_CREATE ...
+  detail    String?  @map("detail") @db.NVarChar(400) // เป้าหมาย/สรุปสิ่งที่ทำ
+  method    String?  @map("method") @db.VarChar(10)
+  path      String?  @map("path") @db.VarChar(200)
+  ip        String?  @map("ip") @db.VarChar(60)
+  createdAt DateTime @default(now()) @map("created_at") // เวลาที่ทำ
+
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_log")
+}
+
+/// ประวัติการทำ PM แต่ละครั้ง — อ้างอิงอุปกรณ์ด้วย serial_number (FK → equipment PK)
+model PmRecord {
+  pmId          Int       @id @default(autoincrement()) @map("pm_id")
+  serialNumber  String    @map("serial_number") @db.VarChar(60) // FK → equipment.serial_number
+  pmDate        DateTime  @map("pm_date") @db.Date // วันที่ PM (ลงตามจริงที่ทำ)
+  cost          Decimal   @map("cost") @db.Decimal(10, 2) // snapshot ค่าใช้จ่าย ณ วันที่ทำ
+  technician    String?   @map("technician") @db.NVarChar(100) // ข้อความเสริม (เผื่อกรอกเอง)
+  performedById Int?      @map("performed_by") // FK → app_user (ผู้ทำ PM ครั้งนี้)
+  remark        String?   @map("remark") @db.NVarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  equipment     Equipment @relation(fields: [serialNumber], references: [serialNumber], onDelete: Cascade)
+  performedBy   User?     @relation("performedBy", fields: [performedById], references: [id])
+  checkResults  PmCheckResult[]
+
+  @@index([serialNumber])
+  @@index([pmDate])
+  @@index([performedById])
+  @@map("pm_record")
+}
+
+/// รายการตรวจเช็ค PM (master) — แยกตามกลุ่มอุปกรณ์ admin จัดการเองได้
+model PmCheckItem {
+  id         Int      @id @default(autoincrement()) @map("check_item_id")
+  groupCode  String   @map("group_code") @db.VarChar(20) // FK → equipment_group
+  label      String   @map("label") @db.NVarChar(200) // ข้อความรายการตรวจ
+  category   String   @default("OTHER") @map("category") @db.VarChar(20) // HARDWARE / SOFTWARE / OTHER
+  sortOrder  Int      @default(0) @map("sort_order")
+  active     Boolean  @default(true) @map("active") // ปิดใช้งานชั่วคราวได้ (ไม่ต้องลบ)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // NoAction — ตัด multi-cascade-path ของ SQL Server (กลุ่มอุปกรณ์ไม่ถูกลบอยู่แล้ว)
+  group      EquipmentGroup  @relation(fields: [groupCode], references: [groupCode], onDelete: NoAction, onUpdate: NoAction)
+  results    PmCheckResult[]
+
+  @@unique([groupCode, label]) // กันรายการซ้ำในกลุ่มเดียวกัน + ให้ seed upsert ได้
+  @@index([groupCode])
+  @@map("pm_check_item")
+}
+
+/// ผลตรวจเช็คแต่ละข้อ ของการทำ PM 1 ครั้ง
+model PmCheckResult {
+  id          Int      @id @default(autoincrement()) @map("check_result_id")
+  pmId        Int      @map("pm_id") // FK → pm_record
+  checkItemId Int?     @map("check_item_id") // FK → pm_check_item (null ถ้ารายการถูกลบภายหลัง)
+  itemLabel   String   @map("item_label") @db.NVarChar(200) // snapshot ข้อความ ณ เวลาที่ตรวจ
+  result      String   @map("result") @db.VarChar(10) // PASS / FAIL
+  note        String?  @map("note") @db.NVarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  pmRecord    PmRecord     @relation(fields: [pmId], references: [pmId], onDelete: Cascade)
+  checkItem   PmCheckItem? @relation(fields: [checkItemId], references: [id], onDelete: SetNull)
+
+  @@index([pmId])
+  @@map("pm_check_result")
+}

@@ -1,0 +1,48 @@
+:root {
+  font-family: 'Sarabun', 'Noto Sans Thai', -apple-system, 'Segoe UI', Roboto,
+    Tahoma, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  /* ให้เข้ากับ colorBgLayout (Teal/Sage) */
+  background: #f5f8f7;
+}
+
+/* การ์ดแบบ minimal — เงาบาง ๆ แทนเส้นขอบหนา ดูสะอาดสบายตา */
+.ant-card {
+  box-shadow: 0 1px 2px rgba(16, 40, 36, 0.04),
+    0 1px 6px -1px rgba(16, 40, 36, 0.04);
+}
+
+/* ลดเส้นแบ่งหัวการ์ดให้บางลง */
+.ant-card-head {
+  border-bottom-color: #eef2f1;
+}
+
+/* scrollbar เรียบ ๆ โทนเดียวกับธีม */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c4d6d2 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c4d6d2;
+  border-radius: 8px;
+}

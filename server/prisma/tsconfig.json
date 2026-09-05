@@ -1,0 +1,12 @@
+{
+  // tsconfig เฉพาะโฟลเดอร์ prisma/ (seed.ts ฯลฯ) — สืบทอดค่าจากตัวหลัก
+  // มีไว้ให้ IDE/ts-node type-check ไฟล์ tooling นอก src ได้ถูกต้อง
+  // (seed.ts อยู่นอก include ของ ../tsconfig.json จึงไม่เห็น @types/node)
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

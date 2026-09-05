@@ -1,0 +1,28 @@
+# Backend (dev mode — hot reload ผ่าน ts-node-dev)
+FROM node:20-bookworm-slim
+
+# Prisma ต้องการ openssl สำหรับ query engine
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ติดตั้ง dependencies ก่อน (cache layer)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# generate Prisma client เข้า node_modules ใน image
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# โค้ดที่เหลือ (ตอนรันจริงจะถูก bind mount ทับด้วย source ในเครื่อง)
+COPY . .
+
+RUN chmod +x /app/docker-entrypoint.sh
+
+EXPOSE 4000
+
+# entrypoint: แก้ host ของ DB → host.docker.internal, รอ DB, db push, seed แล้วค่อย start
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
+CMD ["npm", "run", "dev"]

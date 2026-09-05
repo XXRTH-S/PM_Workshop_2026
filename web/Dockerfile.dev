@@ -1,0 +1,14 @@
+# Frontend (dev mode — Vite dev server + HMR)
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# โค้ดที่เหลือ (ตอนรันจริงจะถูก bind mount ทับด้วย source ในเครื่อง)
+COPY . .
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev"]
